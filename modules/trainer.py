@@ -1,78 +1,167 @@
-"""Modul training khusus untuk dataset Telco-Customer-Churn."""
+"""Trainer module for Telco Customer Churn prediction model.
+
+Defines the TFX run_fn entry point used by the Trainer component, along with
+helper functions for building the Keras model, creating input datasets, and
+exporting a TensorFlow Serving-compatible signature.
+"""
+
 import tensorflow as tf
 import tensorflow_transform as tft
+from keras.layers import Dense, Dropout, Input
+
 from modules.transform import (
-    NUMERICAL_FEATURES,
-    CATEGORICAL_FEATURES,
-    LABEL_KEY,
-    _transformed_name,
+    NUMERICAL_FEATURES, CATEGORICAL_FEATURES, LABEL_KEY, transformed_name
 )
 
-def _get_keras_model():
-    """Membangun arsitektur model klasifikasi biner."""
-    inputs = []
-    
-    # Input untuk fitur numerik (shape=1)
-    for feature in NUMERICAL_FEATURES:
-        inputs.append(tf.keras.layers.Input(
-            name=_transformed_name(feature), shape=(1,), dtype=tf.float32
-        ))
-        
-    # Input untuk fitur kategorikal (shape=1, karena sudah di-encode jadi integer)
-    for feature in CATEGORICAL_FEATURES:
-        inputs.append(tf.keras.layers.Input(
-            name=_transformed_name(feature), shape=(1,), dtype=tf.int64
-        ))
+BATCH_SIZE = 64
+EPOCHS = 50
+LEARNING_RATE = 0.001
+DENSE_DROPOUT = 0.3
 
-    # Gabungkan semua input
-    concat = tf.keras.layers.concatenate(inputs)
-    
-    # Lapisan Dense (Deep Learning)
-    x = tf.keras.layers.Dense(128, activation="relu")(concat)
-    x = tf.keras.layers.Dropout(0.3)(x)
-    x = tf.keras.layers.Dense(64, activation="relu")(x)
-    x = tf.keras.layers.Dropout(0.2)(x)
-    
-    # Output layer (1 neuron dengan sigmoid untuk klasifikasi biner)
-    outputs = tf.keras.layers.Dense(1, activation="sigmoid")(x)
 
-    model = tf.keras.Model(inputs=inputs, outputs=outputs)
-    model.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
-        loss=tf.keras.losses.BinaryCrossentropy(),
-        metrics=[tf.keras.metrics.BinaryAccuracy(name="accuracy"), tf.keras.metrics.AUC(name="auc")]
-    )
-    return model
+def input_fn(file_pattern, tf_transform_output, batch_size):
+    """Read transformed TFRecord files into a tf.data.Dataset.
 
-def _input_fn(file_pattern, tf_transform_output, batch_size=32):
-    """Membuat input function untuk training dan evaluation."""
-    transformed_feature_spec = (
-        tf_transform_output.transformed_feature_spec().copy()
-    )
+    Args:
+        file_pattern: Glob pattern pointing to transformed TFRecord files.
+        tf_transform_output: TFTransformOutput object for the transform graph.
+        batch_size: Number of examples per batch.
+
+    Returns:
+        A tf.data.Dataset that yields (features_dict, label) tuples.
+    """
     dataset = tf.data.experimental.make_batched_features_dataset(
         file_pattern=file_pattern,
         batch_size=batch_size,
-        features=transformed_feature_spec,
+        features=tf_transform_output.transformed_feature_spec(),
         reader=tf.data.TFRecordDataset,
-        label_key=_transformed_name(LABEL_KEY),
+        label_key=transformed_name(LABEL_KEY)
     )
     return dataset
 
-def run_fn(fn_args):
-    """Fungsi utama yang dipanggil oleh TFX Trainer."""
-    tf_transform_output = tft.TFTransformOutput(fn_args.transform_output)
-    
-    train_dataset = _input_fn(fn_args.train_files, tf_transform_output, 32)
-    eval_dataset = _input_fn(fn_args.eval_files, tf_transform_output, 32)
 
-    model = _get_keras_model()
-    
+def _get_serve_tf_examples_fn(model, tf_transform_output):
+    """Return a serving function compatible with TensorFlow Serving REST/gRPC.
+
+    The returned function accepts a batch of serialised tf.train.Example bytes,
+    parses them using the raw (pre-transform) feature spec, applies the
+    transform layer, runs the model, and returns the prediction output.
+
+    Args:
+        model: Trained Keras model with an attached tft_layer attribute.
+        tf_transform_output: TFTransformOutput object for the transform graph.
+
+    Returns:
+        A @tf.function suitable for use as a SavedModel serving signature.
+    """
+    model.tft_layer = tf_transform_output.transform_features_layer()
+    raw_feature_spec = tf_transform_output.raw_feature_spec()
+    # Remove the label key from the serving spec — clients never send labels.
+    raw_feature_spec.pop(LABEL_KEY, None)
+
+    @tf.function(input_signature=[
+        tf.TensorSpec(shape=[None], dtype=tf.string, name='examples')
+    ])
+    def serve_tf_examples_fn(serialized_tf_examples):
+        """Parse and serve a batch of serialised tf.train.Example protos."""
+        raw_features = tf.io.parse_example(serialized_tf_examples, raw_feature_spec)
+        transformed_features = model.tft_layer(raw_features)
+        outputs = model(transformed_features)
+        return {'outputs': outputs}
+
+    return serve_tf_examples_fn
+
+
+def _build_model_inputs(tf_transform_output):  # pylint: disable=unused-argument
+    """Create Keras Input layers matching the shapes produced by preprocessing_fn.
+
+    Numerical features are scaled scalars (shape=(1,), float32).
+    Categorical features are one-hot vectors of width num_labels+1 (float32).
+
+    Args:
+        tf_transform_output: TFTransformOutput (kept for API consistency).
+
+    Returns:
+        Dict mapping transformed feature name → tf.keras.Input layer.
+    """
+    inputs = {}
+    for feature in NUMERICAL_FEATURES:
+        inputs[transformed_name(feature)] = Input(
+            shape=(1,),
+            name=transformed_name(feature),
+            dtype=tf.float32
+        )
+    for feature, num_labels in CATEGORICAL_FEATURES.items():
+        inputs[transformed_name(feature)] = Input(
+            shape=(num_labels + 1,),
+            name=transformed_name(feature),
+            dtype=tf.float32
+        )
+    return inputs
+
+
+def _build_model(inputs, tf_transform_output):  # pylint: disable=unused-argument
+    """Build and compile the Keras DNN classification model.
+
+    Args:
+        inputs: Dict of Keras Input layers from _build_model_inputs.
+        tf_transform_output: TFTransformOutput (kept for API consistency).
+
+    Returns:
+        Compiled tf.keras.Model.
+    """
+    denses = []
+    for feature in NUMERICAL_FEATURES:
+        denses.append(inputs[transformed_name(feature)])
+    for feature in CATEGORICAL_FEATURES:
+        denses.append(inputs[transformed_name(feature)])
+
+    concatenated = tf.concat(denses, axis=-1)
+
+    x = Dense(128, activation='relu')(concatenated)
+    x = Dropout(DENSE_DROPOUT)(x)
+    x = Dense(64, activation='relu')(x)
+    x = Dropout(DENSE_DROPOUT)(x)
+    x = Dense(32, activation='relu')(x)
+    x = Dropout(DENSE_DROPOUT)(x)
+    outputs = Dense(1, activation='sigmoid')(x)  # Binary classification
+
+    model = tf.keras.Model(inputs=inputs, outputs=outputs)
+    model.compile(
+        optimizer=tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE),
+        loss='binary_crossentropy',
+        metrics=[
+            tf.keras.metrics.BinaryAccuracy(name='accuracy'),
+            tf.keras.metrics.AUC(name='auc')
+        ]
+    )
+    model.summary()
+    return model
+
+
+def run_fn(fn_args):
+    """TFX Trainer entry point — builds, trains, and saves the model.
+
+    Args:
+        fn_args: FnArgs object provided by the TFX Trainer component containing
+            train_files, eval_files, transform_output, and serving_model_dir.
+    """
+    tf_transform_output = tft.TFTransformOutput(fn_args.transform_output)
+
+    train_dataset = input_fn(fn_args.train_files, tf_transform_output, BATCH_SIZE)
+    eval_dataset = input_fn(fn_args.eval_files, tf_transform_output, BATCH_SIZE)
+
+    inputs = _build_model_inputs(tf_transform_output)
+    model = _build_model(inputs, tf_transform_output)
+
     model.fit(
         train_dataset,
-        steps_per_epoch=fn_args.train_steps,
+        epochs=EPOCHS,
         validation_data=eval_dataset,
-        validation_steps=fn_args.eval_steps,
-        epochs=10, # Bisa ditambah jika akurasi masih rendah
+        verbose=1
     )
 
-    model.save(fn_args.serving_model_dir, save_format="tf")
+    serving_fn = _get_serve_tf_examples_fn(model, tf_transform_output)
+    model.save(fn_args.serving_model_dir, save_format='tf', signatures={
+        'serving_default': serving_fn
+    })

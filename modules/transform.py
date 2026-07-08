@@ -1,48 +1,83 @@
-"""Modul preprocessing khusus untuk dataset Telco-Customer-Churn."""
+"""Transform module for the Telco Customer Churn TFX pipeline.
+
+Defines the preprocessing_fn used by the TFX Transform component to encode
+categorical features (vocabulary + one-hot) and scale numerical features to [0, 1].
+"""
+
 import tensorflow as tf
 import tensorflow_transform as tft
 
-# Kolom yang akan dibuang (tidak dipakai untuk training)
-UNUSED_FEATURES = ["customerID"]
+CATEGORICAL_FEATURES = {
+    "InternetService": 3,
+    "SeniorCitizen": 2,
+    "PaperlessBilling": 2,
+    "Partner": 2,
+    "PhoneService": 2,
+    "StreamingTV": 3,
+    "gender": 2
+}
 
-# Kolom Numerik (berupa angka)
-NUMERICAL_FEATURES = ["tenure", "MonthlyCharges", "TotalCharges"]
-
-# Kolom Kategorikal (berupa teks/kategori)
-CATEGORICAL_FEATURES = [
-    "gender", "SeniorCitizen", "Partner", "Dependents", "PhoneService",
-    "MultipleLines", "InternetService", "OnlineSecurity", "OnlineBackup",
-    "DeviceProtection", "TechSupport", "StreamingTV", "StreamingMovies",
-    "Contract", "PaperlessBilling", "PaymentMethod"
+NUMERICAL_FEATURES = [
+    "MonthlyCharges",
+    "TotalCharges",
+    "tenure"
 ]
 
-# Kolom Target (Label)
 LABEL_KEY = "Churn"
 
-def _transformed_name(key):
-    """Mengembalikan nama fitur yang sudah ditransformasi."""
-    return f"{key}_xf"
+
+def transformed_name(key):
+    """Return the transformed feature name by appending '_xf' suffix.
+
+    Args:
+        key: Original feature name string.
+
+    Returns:
+        Feature name with '_xf' appended.
+    """
+    return key + "_xf"
+
+
+def convert_num_to_one_hot(label_tensor, num_labels=2):
+    """Convert an integer label tensor into a one-hot encoded vector.
+
+    Args:
+        label_tensor: Integer tensor of vocabulary indices (shape: [batch]).
+        num_labels: Number of output classes (one-hot vector width).
+
+    Returns:
+        2-D float tensor of shape [batch, num_labels].
+    """
+    one_hot_tensor = tf.one_hot(label_tensor, num_labels)
+    return tf.reshape(one_hot_tensor, [-1, num_labels])
+
 
 def preprocessing_fn(inputs):
-    """Fungsi preprocessing untuk TFX Transform."""
-    outputs = inputs.copy()
+    """Preprocess raw input features into transformed features for training.
 
-    # 1. Normalisasi fitur numerik (Z-score)
+    Categorical features are mapped to vocabulary indices and then one-hot
+    encoded to vectors of width num_labels+1. Numerical features are scaled
+    to [0, 1]. The label is cast to int64.
+
+    Args:
+        inputs: Dict mapping feature key strings to raw feature tensors.
+
+    Returns:
+        Dict mapping transformed feature key strings to output tensors.
+    """
+    outputs = {}
+
+    for key, dim in CATEGORICAL_FEATURES.items():
+        int_value = tft.compute_and_apply_vocabulary(
+            inputs[key], top_k=dim + 1
+        )
+        outputs[transformed_name(key)] = convert_num_to_one_hot(
+            int_value, num_labels=dim + 1
+        )
+
     for feature in NUMERICAL_FEATURES:
-        # TotalCharges seringkali punya tipe string/float yang campur aduk, kita cast ke float32
-        outputs[_transformed_name(feature)] = tft.scale_to_z_score(
-            tf.cast(inputs[feature], tf.float32)
-        )
+        outputs[transformed_name(feature)] = tft.scale_to_0_1(inputs[feature])
 
-    # 2. Encode fitur kategorikal menjadi integer (Vocabulary)
-    for feature in CATEGORICAL_FEATURES:
-        outputs[_transformed_name(feature)] = tft.compute_and_apply_vocabulary(
-            inputs[feature], vocab_filename=feature
-        )
-
-    # 3. Encode Label (Churn: "Yes" -> 1, "No" -> 0)
-    outputs[_transformed_name(LABEL_KEY)] = tf.cast(
-        tf.equal(inputs[LABEL_KEY], "Yes"), tf.float32
-    )
+    outputs[transformed_name(LABEL_KEY)] = tf.cast(inputs[LABEL_KEY], tf.int64)
 
     return outputs
