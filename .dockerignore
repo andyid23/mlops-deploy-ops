@@ -1,0 +1,7 @@
+env-mlops/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.git/
+monitoring/
+data/
