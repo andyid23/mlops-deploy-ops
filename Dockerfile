@@ -1,6 +1,6 @@
 FROM tensorflow/serving:latest
 
-COPY ./andyid-pipeline/serving_model /models/
+COPY ./serving_model /models/
 COPY ./config /model_config
 ENV MODEL_NAME=andyid-model
 
