@@ -1,140 +1,17 @@
-# Telco Customer Churn Prediction — MLOps Pipeline
+# Submission 2: ML Pipeline - Telco Customer Churn Prediction
 
-**Dicoding Username:** andyid
+**Nama:** Andy Yulianto 
+**Username dicoding:** andyid
 
----
-
-## Problem Description
-
-Customer churn is a critical business problem for telecom companies. This project builds
-an end-to-end MLOps pipeline that trains a binary classification model to predict whether
-a customer will churn (leave the service), enabling proactive retention strategies.
-
----
-
-## Dataset
-
-| Property | Value |
-|---|---|
-| Name | Telco Customer Churn |
-| Source | IBM Sample Dataset |
-| Rows | 7,043 customers |
-| Features | 21 (demographic, service, billing) |
-| Target | `Churn` (binary: Yes / No) |
-
-Key features used by the model:
-
-- **Categorical:** `InternetService`, `SeniorCitizen`, `PaperlessBilling`, `Partner`, `PhoneService`, `StreamingTV`, `gender`
-- **Numerical:** `MonthlyCharges`, `TotalCharges`, `tenure`
-
----
-
-## Solution Approach
-
-The solution uses a **TFX (TensorFlow Extended)** pipeline for reproducible, production-ready ML:
-
-```
-CsvExampleGen → StatisticsGen → SchemaGen → ExampleValidator
-     → Transform → Trainer → Resolver → Evaluator → Pusher
-```
-
-### Pipeline Steps
-
-1. **CsvExampleGen** — Ingests raw CSV data and splits into train (80%) / eval (20%)
-2. **StatisticsGen** — Computes descriptive statistics for data validation
-3. **SchemaGen** — Infers the feature schema automatically
-4. **ExampleValidator** — Detects anomalies and missing values
-5. **Transform** — One-hot encodes categorical features; scales numericals to [0, 1]
-6. **Trainer** — Trains a 3-layer DNN (128 → 64 → 32 units) with Dropout
-7. **Resolver** — Retrieves the latest blessed model for comparison
-8. **Evaluator** — Evaluates with BinaryAccuracy, AUC, Precision, Recall, FP, FN
-9. **Pusher** — Pushes the blessed model to `serving_model/` for TF Serving
-
-### Model Architecture
-
-```
-Input (concatenated features)
-  → Dense(128, relu) → Dropout(0.3)
-  → Dense(64, relu)  → Dropout(0.3)
-  → Dense(32, relu)  → Dropout(0.3)
-  → Dense(1, sigmoid)   # churn probability
-```
-
-- **Loss:** binary_crossentropy
-- **Optimizer:** Adam (lr=0.001)
-- **Metrics:** BinaryAccuracy, AUC
-
----
-
-## Deployment
-
-| Component | Technology |
-|---|---|
-| Model serving | TensorFlow Serving |
-| Containerisation | Docker |
-| Hosting platform | Railway |
-| Monitoring | Prometheus |
-
-**Serving URL:** `http://localhost:8501` *(update after Railway deployment)*
-
----
-
-## Monitoring
-
-Prometheus scrapes TF Serving metrics from the `/monitoring/prometheus/metrics` endpoint
-every 5 seconds (global interval: 15 s).
-
-Monitoring configuration files:
-- `config/prometheus.config` — TF Serving Prometheus config
-- `monitoring/prometheus.yml` — Prometheus scrape config
-- `monitoring/Dockerfile` — Prometheus container
-
-Screenshot reference: `andyid-monitoring.png`
-
----
-
-## Running the Pipeline Locally
-
-```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Run the TFX pipeline
-python andyid-pipeline/local_pipeline.py
-```
-
-The pipeline artefacts (metadata, transformed data, model) are stored under
-`andyid_pipeline/`. The blessed model is pushed to `serving_model/andyid-model/`.
-
----
-
-## Running Prediction Tests
-
-Open `andyid-testing.ipynb` in Jupyter and run all cells to send a sample prediction
-request to the TF Serving REST endpoint and inspect the churn probability output.
-
----
-
-## Project Structure
-
-```
-deploy-ops/
-├── andyid-pipeline/
-│   └── local_pipeline.py       # TFX pipeline definition & runner
-├── modules/
-│   ├── components.py           # Shared feature constants
-│   ├── transform.py            # TFX Transform preprocessing_fn
-│   └── trainer.py              # TFX Trainer run_fn
-├── data/
-│   └── Telco-Customer-Churn.csv.csv
-├── serving_model/
-│   └── andyid-model/               # Populated by Pusher after pipeline run
-├── config/
-│   └── prometheus.config       # TF Serving monitoring config
-├── monitoring/
-│   ├── prometheus.yml          # Prometheus scrape config
-│   └── Dockerfile              # Prometheus container
-├── Dockerfile                  # TF Serving container
-├── andyid-testing.ipynb        # Prediction request test notebook
-└── requirements.txt
-```
+| Komponen | Deskripsi |
+| --- | --- |
+| **Dataset** | [Telco Customer Churn Dataset](https://www.kaggle.com/datasets/blastchar/telco-customer-churn). Dataset ini berisi informasi tentang pelanggan telekomunikasi, termasuk apakah mereka berhenti berlangganan (churn) dalam bulan terakhir. |
+| **Masalah** | Tingkat churn (berhenti berlangganan) yang tinggi dapat merugikan perusahaan telekomunikasi. Perusahaan perlu mengidentifikasi pelanggan yang berpotensi churn sejak dini agar dapat mengambil langkah retensi yang tepat dan efisien. |
+| **Solusi Machine Learning** | Membangun model klasifikasi biner menggunakan TensorFlow dan TFX pipeline untuk memprediksi probabilitas seorang pelanggan akan melakukan churn berdasarkan profil demografi dan layanan yang mereka gunakan. Target yang ingin dicapai adalah model dengan akurasi dan AUC yang tinggi untuk meminimalkan kesalahan prediksi. |
+| **Metode Pengolahan** | Data terdiri dari fitur kategorikal (seperti `gender`, `Partner`, `InternetService`) dan numerik (seperti `tenure`, `MonthlyCharges`, `TotalCharges`). Fitur kategorikal diolah menggunakan `tft.compute_and_apply_vocabulary()` untuk mengubahnya menjadi representasi integer, sedangkan fitur numerik dinormalisasi menggunakan `tft.scale_to_0_1()` agar berada dalam rentang yang sama. |
+| **Arsitektur Model** | Model menggunakan arsitektur Deep Neural Network (DNN) dengan konfigurasi sebagai berikut:<br>- **Input Layer:** Menyesuaikan dengan jumlah fitur hasil transformasi.<br>- **Hidden Layer 1:** 128 unit dengan aktivasi ReLU.<br>- **Dropout 1:** 0.3 untuk mencegah overfitting.<br>- **Hidden Layer 2:** 64 unit dengan aktivasi ReLU.<br>- **Dropout 2:** 0.3.<br>- **Hidden Layer 3:** 32 unit dengan aktivasi ReLU.<br>- **Dropout 3:** 0.3.<br>- **Output Layer:** 1 unit dengan aktivasi sigmoid (untuk klasifikasi biner).<br><br>**Total params:** 13,825 (Trainable: 13,825, Non-trainable: 0). |
+| **Metrik Evaluasi** | Metrik yang digunakan untuk mengevaluasi performa model meliputi `BinaryAccuracy`, `AUC` (Area Under Curve), `Precision`, dan `Recall`. Akurasi mengukur proporsi prediksi yang benar, sedangkan AUC mengukur kemampuan model dalam membedakan antara kelas positif dan negatif. |
+| **Performa Model** | Model dilatih selama 50 epoch dengan `steps_per_epoch=100`. Performa model pada epoch terakhir (Epoch 50) menunjukkan hasil yang sangat baik:<br>- **Training Accuracy:** 80.44%<br>- **Training AUC:** 0.8383<br>- **Validation Accuracy:** 78.59%<br>- **Validation AUC:** 0.8278<br>- **Validation Loss:** 0.4448<br><br>Model berhasil di-bless oleh Evaluator, di-push oleh Pusher, dan di-deploy ke cloud. Model mampu memberikan prediksi probabilitas churn dengan baik (contoh hasil prediksi: `0.642` atau 64.2% peluang churn). |
+| **Opsi Deployment** | Proyek machine learning ini dideploy menggunakan Platform as a Service (PaaS) yaitu **Railway** (https://railway.app/). Railway dipilih karena menyediakan layanan deployment berbasis Docker yang mudah diintegrasikan. Model disajikan (serving) menggunakan **TensorFlow Serving** di dalam Docker container. |
+| **Web App** | [Telco Customer Churn Prediction - Model Metadata](https://mlops-deploy.up.railway.app/v1/models/andyid-model/metadata) |
+| **Monitoring** | Monitoring pada proyek ini dilakukan menggunakan layanan open-source yaitu **Prometheus**. Prometheus dikonfigurasi untuk menangkap dan memantau metrik dari TensorFlow Serving, seperti jumlah request yang masuk, latensi respons, dan status dari setiap request yang diterima oleh sistem model serving. |
