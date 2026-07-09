@@ -10,8 +10,8 @@ scrape_configs:
       - targets: ['localhost:9090']
 
   - job_name: 'tensorflow-serving-railway'
-    metrics_path: '/monitoring'  # <-- Path yang benar untuk TF Serving
-    scheme: 'https'  # <-- WAJIB: Railway menggunakan HTTPS
+    metrics_path: '/monitoring/prometheus/metrics'
+    scheme: 'https'  
     scrape_interval: 5s
     static_configs:
-      - targets: ['mlops-deploy.up.railway.app']  # <-- Tanpa port (HTTPS default 443)
+      - targets: ['mlops-deploy.up.railway.app'] 
