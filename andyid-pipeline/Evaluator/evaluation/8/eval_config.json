@@ -1,0 +1,56 @@
+{
+  "evalConfig": {
+    "modelSpecs": [
+      {
+        "labelKey": "Churn",
+        "predictionKey": "outputs"
+      }
+    ],
+    "slicingSpecs": [
+      {}
+    ],
+    "metricsSpecs": [
+      {
+        "metrics": [
+          {
+            "className": "BinaryAccuracy",
+            "threshold": {
+              "valueThreshold": {
+                "lowerBound": 0.5
+              }
+            }
+          },
+          {
+            "className": "AUC",
+            "threshold": {
+              "valueThreshold": {
+                "lowerBound": 0.5
+              }
+            }
+          },
+          {
+            "className": "Precision"
+          },
+          {
+            "className": "Recall"
+          },
+          {
+            "className": "FalsePositives"
+          },
+          {
+            "className": "FalseNegatives"
+          }
+        ],
+        "modelNames": [
+          ""
+        ]
+      }
+    ]
+  },
+  "version": "0.42.0",
+  "dataLocation": "<user provided PCollection>",
+  "fileFormat": "<unknown>",
+  "modelLocations": {
+    "": "C:\\Users\\Dragon\\Documents\\github\\andyid23\\mlops\\deploy-ops\\andyid-pipeline\\Trainer\\model\\7\\Format-Serving"
+  }
+}

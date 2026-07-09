@@ -26,7 +26,7 @@ TRAINER_MODULE_FILE = 'modules/trainer.py'
 SERVING_MODEL_DIR = os.path.join(os.getcwd(), 'serving_model', 'andyid-model')
 
 # Nama pipeline harus sesuai username Dicoding Anda
-PIPELINE_NAME = 'andyid_pipeline'
+PIPELINE_NAME = 'andyid-pipeline'
 PIPELINE_ROOT = os.path.join(os.getcwd(), PIPELINE_NAME)
 METADATA_PATH = os.path.join(PIPELINE_ROOT, 'metadata', 'metadata.db')
 
