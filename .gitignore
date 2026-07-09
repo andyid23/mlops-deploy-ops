@@ -11,7 +11,7 @@ tests
 
 # tfx components
 /pipelines
-/serving_model
+# /serving_model
 
 # Distribution / packaging
 .Python
