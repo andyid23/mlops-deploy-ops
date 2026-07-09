@@ -1,14 +1,15 @@
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
-  external_labels:
-    monitor: "tf-serving-monitor"
 
 scrape_configs:
-  - job_name: "prometheus"
-    scrape_interval: 5s 
-    metrics_path: /monitoring/prometheus/metrics 
+  - job_name: 'prometheus'
     static_configs:
-      # TODO: Replace with actual Railway deployment URL after deployment.
-      # Example: 'my-app.up.railway.app:8501'
-      - targets: ['localhost:8501']
+      - targets: ['localhost:9090']
+
+  - job_name: 'tensorflow-serving-railway'
+    metrics_path: '/monitoring'  # <-- Path yang benar
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['mlops-deploy.up.railway.app:443']  # <-- Gunakan port 443 untuk HTTPS
+    scheme: 'https'  # <-- Wajib karena Railway menggunakan HTTPS
