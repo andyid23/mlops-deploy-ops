@@ -23,7 +23,7 @@ logging.getLogger().setLevel(logging.INFO)
 DATA_ROOT = 'data'
 TRANSFORM_MODULE_FILE = 'modules/transform.py'
 TRAINER_MODULE_FILE = 'modules/trainer.py'
-SERVING_MODEL_DIR = 'serving_model'
+SERVING_MODEL_DIR = os.path.join(os.getcwd(), 'serving_model', 'andyid-model')
 
 # Nama pipeline harus sesuai username Dicoding Anda
 PIPELINE_NAME = 'andyid_pipeline'
@@ -102,12 +102,26 @@ def init_components(data_root, transform_module, trainer_module):
         baseline_model=resolver.outputs['model'],
         eval_config=tfma.EvalConfig(
             model_specs=[
-                tfma.ModelSpec(label_key='Churn')
+                tfma.ModelSpec(label_key='Churn', prediction_key='outputs')
             ],
             metrics_specs=[
                 tfma.MetricsSpec(metrics=[
-                    tfma.MetricConfig(class_name='BinaryAccuracy'),
-                    tfma.MetricConfig(class_name='AUC'),
+                    tfma.MetricConfig(
+                        class_name='BinaryAccuracy',
+                        threshold=tfma.MetricThreshold(
+                            value_threshold=tfma.GenericValueThreshold(
+                                lower_bound={'value': 0.5}
+                            )
+                        )
+                    ),
+                    tfma.MetricConfig(
+                        class_name='AUC',
+                        threshold=tfma.MetricThreshold(
+                            value_threshold=tfma.GenericValueThreshold(
+                                lower_bound={'value': 0.5}
+                            )
+                        )
+                    ),
                     tfma.MetricConfig(class_name='Precision'),
                     tfma.MetricConfig(class_name='Recall'),
                     tfma.MetricConfig(class_name='FalsePositives'),

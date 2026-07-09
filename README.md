@@ -104,7 +104,7 @@ python andyid-pipeline/local_pipeline.py
 ```
 
 The pipeline artefacts (metadata, transformed data, model) are stored under
-`andyid_pipeline/`. The blessed model is pushed to `serving_model/cc-model/`.
+`andyid_pipeline/`. The blessed model is pushed to `serving_model/andyid-model/`.
 
 ---
 
@@ -128,7 +128,7 @@ deploy-ops/
 ├── data/
 │   └── Telco-Customer-Churn.csv.csv
 ├── serving_model/
-│   └── cc-model/               # Populated by Pusher after pipeline run
+│   └── andyid-model/               # Populated by Pusher after pipeline run
 ├── config/
 │   └── prometheus.config       # TF Serving monitoring config
 ├── monitoring/

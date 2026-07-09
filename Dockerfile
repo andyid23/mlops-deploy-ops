@@ -1,8 +1,8 @@
 FROM tensorflow/serving:latest
 
-COPY ./serving_model/cc-model /models/cc-model
+COPY ./andyid-pipeline/serving_model /models/
 COPY ./config /model_config
-ENV MODEL_NAME=cc-model
+ENV MODEL_NAME=andyid-model
 
 ENV MONITORING_CONFIG="/model_config/prometheus.config"
 ENV PORT=8501

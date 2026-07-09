@@ -9,9 +9,31 @@ import tensorflow as tf
 import tensorflow_transform as tft
 from keras.layers import Dense, Dropout, Input
 
-from modules.transform import (
-    NUMERICAL_FEATURES, CATEGORICAL_FEATURES, LABEL_KEY, transformed_name
-)
+# ── Feature constants (duplicated from transform.py because TFX packages
+#    trainer.py into a standalone wheel that cannot import modules.transform) ──
+
+CATEGORICAL_FEATURES = {
+    "InternetService": 3,
+    "SeniorCitizen": 2,
+    "PaperlessBilling": 2,
+    "Partner": 2,
+    "PhoneService": 2,
+    "StreamingTV": 3,
+    "gender": 2
+}
+
+NUMERICAL_FEATURES = [
+    "MonthlyCharges",
+    "TotalCharges",
+    "tenure"
+]
+
+LABEL_KEY = "Churn"
+
+
+def transformed_name(key):
+    """Return the transformed feature name by appending '_xf' suffix."""
+    return key + "_xf"
 
 BATCH_SIZE = 64
 EPOCHS = 50
@@ -19,26 +41,16 @@ LEARNING_RATE = 0.001
 DENSE_DROPOUT = 0.3
 
 
-def input_fn(file_pattern, tf_transform_output, batch_size):
-    """Read transformed TFRecord files into a tf.data.Dataset.
-
-    Args:
-        file_pattern: Glob pattern pointing to transformed TFRecord files.
-        tf_transform_output: TFTransformOutput object for the transform graph.
-        batch_size: Number of examples per batch.
-
-    Returns:
-        A tf.data.Dataset that yields (features_dict, label) tuples.
-    """
+def _input_fn(file_pattern, tf_transform_output, batch_size):
+    """Membuat dataset untuk training/evaluasi dari TFRecord (GZIP-compressed)."""
     dataset = tf.data.experimental.make_batched_features_dataset(
         file_pattern=file_pattern,
         batch_size=batch_size,
         features=tf_transform_output.transformed_feature_spec(),
-        reader=tf.data.TFRecordDataset,
+        reader=lambda path: tf.data.TFRecordDataset(path, compression_type='GZIP'),
         label_key=transformed_name(LABEL_KEY)
     )
     return dataset
-
 
 def _get_serve_tf_examples_fn(model, tf_transform_output):
     """Return a serving function compatible with TensorFlow Serving REST/gRPC.
@@ -140,28 +152,36 @@ def _build_model(inputs, tf_transform_output):  # pylint: disable=unused-argumen
 
 
 def run_fn(fn_args):
-    """TFX Trainer entry point — builds, trains, and saves the model.
-
-    Args:
-        fn_args: FnArgs object provided by the TFX Trainer component containing
-            train_files, eval_files, transform_output, and serving_model_dir.
-    """
+    """Train the model and save it."""
     tf_transform_output = tft.TFTransformOutput(fn_args.transform_output)
 
-    train_dataset = input_fn(fn_args.train_files, tf_transform_output, BATCH_SIZE)
-    eval_dataset = input_fn(fn_args.eval_files, tf_transform_output, BATCH_SIZE)
+    # Load dataset
+    train_dataset = _input_fn(fn_args.train_files, tf_transform_output, BATCH_SIZE)
+    eval_dataset = _input_fn(fn_args.eval_files, tf_transform_output, BATCH_SIZE)
 
+    # Build model
     inputs = _build_model_inputs(tf_transform_output)
     model = _build_model(inputs, tf_transform_output)
 
+    # Hitung steps_per_epoch
+    steps_per_epoch = fn_args.train_steps if fn_args.train_steps else 100
+    validation_steps = fn_args.eval_steps if fn_args.eval_steps else 50
+
+    print(f"🚀 Training model dengan steps_per_epoch={steps_per_epoch}, validation_steps={validation_steps}")
+
+    # Train model
     model.fit(
         train_dataset,
         epochs=EPOCHS,
+        steps_per_epoch=steps_per_epoch,
         validation_data=eval_dataset,
+        validation_steps=validation_steps,
         verbose=1
     )
 
+    # Save model
     serving_fn = _get_serve_tf_examples_fn(model, tf_transform_output)
     model.save(fn_args.serving_model_dir, save_format='tf', signatures={
         'serving_default': serving_fn
     })
+    print(f"✅ Model berhasil disimpan di: {fn_args.serving_model_dir}")
