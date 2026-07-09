@@ -6,7 +6,7 @@ COPY ./config /model_config
 
 # 2. Set Environment Variables
 ENV MODEL_NAME=andyid-model
-ENV MODEL_BASE_PATH=/models       # <--- INI YANG HILANG! WAJIB ADA
+ENV MODEL_BASE_PATH=/models
 ENV MONITORING_CONFIG="/model_config/prometheus.config"
 ENV PORT=8501
 
