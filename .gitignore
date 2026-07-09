@@ -136,4 +136,4 @@ dmypy.json
 .pyre/
 
 .kiro
-andyid_pipeline
+/andyid_pipeline

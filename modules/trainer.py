@@ -53,37 +53,22 @@ def _input_fn(file_pattern, tf_transform_output, batch_size):
     return dataset
 
 def _get_serve_tf_examples_fn(model, tf_transform_output):
-    """Return a serving function compatible with TensorFlow Serving REST/gRPC.
+    """Returns a function that parses a serialized tf.Example and applies TFT."""
 
-    The returned function accepts a batch of serialised tf.train.Example bytes,
-    parses them using the raw (pre-transform) feature spec, applies the
-    transform layer, runs the model, and returns the prediction output.
-
-    Args:
-        model: Trained Keras model with an attached tft_layer attribute.
-        tf_transform_output: TFTransformOutput object for the transform graph.
-
-    Returns:
-        A @tf.function suitable for use as a SavedModel serving signature.
-    """
     model.tft_layer = tf_transform_output.transform_features_layer()
-    raw_feature_spec = tf_transform_output.raw_feature_spec()
-    # Remove the label key from the serving spec — clients never send labels.
-    raw_feature_spec.pop(LABEL_KEY, None)
 
-    @tf.function(input_signature=[
-        tf.TensorSpec(shape=[None], dtype=tf.string, name='examples')
-    ])
+    # INI KUNCI UTAMANYA: Tambahkan input_signature agar model.save() tidak error!
+    # Model akan menerima input berupa serialized tf.Example string.
+    @tf.function(input_signature=[tf.TensorSpec([None], tf.string, name='examples')])
     def serve_tf_examples_fn(serialized_tf_examples):
-        """Parse and serve a batch of serialised tf.train.Example protos."""
-        raw_features = tf.io.parse_example(serialized_tf_examples, raw_feature_spec)
-        transformed_features = model.tft_layer(raw_features)
-        outputs = model(transformed_features)
-        return {'outputs': outputs}
+        """Returns the output to be used in the serving signature."""
+        feature_spec = tf_transform_output.raw_feature_spec()
+        feature_spec.pop(LABEL_KEY)  # Hapus label key dari feature spec
+        parsed_features = tf.io.parse_example(serialized_tf_examples, feature_spec)
+        transformed_features = model.tft_layer(parsed_features)
+        return model(transformed_features)
 
     return serve_tf_examples_fn
-
-
 def _build_model_inputs(tf_transform_output):  # pylint: disable=unused-argument
     """Create Keras Input layers matching the shapes produced by preprocessing_fn.
 
